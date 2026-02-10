@@ -214,3 +214,132 @@ def unblock_confirm_keyboard(sub_bot_id: int, user_id: int) -> InlineKeyboardMar
             InlineKeyboardButton(text="取消", callback_data="nav_cancel"),
         ],
     ])
+
+
+# ===== 广告管理键盘 =====
+
+
+def ad_list_keyboard(ads: list, admin_panel: bool = False) -> InlineKeyboardMarkup:
+    """广告列表键盘"""
+    rows: list[list[InlineKeyboardButton]] = []
+    for ad in ads:
+        status = "启用" if ad.is_active else "停用"
+        scope = "全局" if ad.target_type == "global" else f"Bot#{ad.target_bot_id}"
+        rows.append([
+            InlineKeyboardButton(
+                text=f"[{status}] \"{ad.name}\" ({scope})",
+                callback_data=f"ad_detail:{ad.id}",
+            ),
+        ])
+    rows.append([
+        InlineKeyboardButton(text="添加广告", callback_data="ad_add"),
+    ])
+    back_cb = "adm_panel" if admin_panel else "nav_home"
+    rows.append([
+        InlineKeyboardButton(text="返回管理面板", callback_data=back_cb),
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def ad_detail_keyboard(ad_id: int, is_active: bool) -> InlineKeyboardMarkup:
+    """广告详情键盘"""
+    toggle_text = "停用" if is_active else "启用"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text=toggle_text, callback_data=f"ad_toggle:{ad_id}"),
+            InlineKeyboardButton(text="修改内容", callback_data=f"ad_edit_text:{ad_id}"),
+        ],
+        [
+            InlineKeyboardButton(text="修改优先级", callback_data=f"ad_edit_priority:{ad_id}"),
+            InlineKeyboardButton(text="删除广告", callback_data=f"ad_delete:{ad_id}"),
+        ],
+        [
+            InlineKeyboardButton(text="返回列表", callback_data="ad_list"),
+        ],
+    ])
+
+
+def ad_button_choice_keyboard() -> InlineKeyboardMarkup:
+    """是否添加广告按钮"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="添加按钮", callback_data="ad_add_button"),
+            InlineKeyboardButton(text="跳过，无按钮", callback_data="ad_skip_button"),
+        ],
+    ])
+
+
+def ad_scope_keyboard() -> InlineKeyboardMarkup:
+    """广告范围选择"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="全局 - 所有Bot展示", callback_data="ad_scope_global")],
+        [InlineKeyboardButton(text="指定Bot - 仅特定Bot展示", callback_data="ad_scope_specific")],
+        [InlineKeyboardButton(text="取消", callback_data="ad_cancel")],
+    ])
+
+
+def ad_confirm_keyboard() -> InlineKeyboardMarkup:
+    """广告确认键盘"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="确认添加", callback_data="ad_confirm"),
+            InlineKeyboardButton(text="取消", callback_data="ad_cancel"),
+        ],
+    ])
+
+
+def ad_delete_confirm_keyboard(ad_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="确认删除", callback_data=f"ad_delete_confirm:{ad_id}"),
+            InlineKeyboardButton(text="取消", callback_data=f"ad_detail:{ad_id}"),
+        ],
+    ])
+
+
+# ===== 广播相关键盘 =====
+
+
+def broadcast_bot_select_keyboard(bots: list[SubBotDTO]) -> InlineKeyboardMarkup:
+    """广播Bot选择键盘"""
+    rows: list[list[InlineKeyboardButton]] = []
+    for bot in bots:
+        rows.append([
+            InlineKeyboardButton(
+                text=f"@{bot.bot_username} - {bot.user_count}个用户",
+                callback_data=f"broadcast_select:{bot.id}",
+            ),
+        ])
+    rows.append([
+        InlineKeyboardButton(text="取消", callback_data="broadcast_cancel"),
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def broadcast_cancel_keyboard() -> InlineKeyboardMarkup:
+    """广播取消键盘"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="取消", callback_data="broadcast_cancel")],
+    ])
+
+
+def broadcast_confirm_keyboard() -> InlineKeyboardMarkup:
+    """广播确认键盘"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="确认发送", callback_data="broadcast_confirm"),
+            InlineKeyboardButton(text="取消", callback_data="broadcast_cancel"),
+        ],
+    ])
+
+
+def broadcast_progress_keyboard(task_id: int, show_cancel: bool = False) -> InlineKeyboardMarkup:
+    """广播进度查询键盘"""
+    rows: list[list[InlineKeyboardButton]] = [
+        [InlineKeyboardButton(text="刷新进度", callback_data=f"broadcast_progress:{task_id}")],
+    ]
+    if show_cancel:
+        rows.append([
+            InlineKeyboardButton(text="取消广播", callback_data=f"broadcast_cancel_task:{task_id}"),
+        ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)

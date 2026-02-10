@@ -23,5 +23,7 @@ class BlockStates(StatesGroup):
 
 
 class AdStates(StatesGroup):
+    waiting_ad_name = State()
     waiting_ad_text = State()
-    waiting_ad_url = State()
+    waiting_ad_button = State()
+    confirming_ad = State()

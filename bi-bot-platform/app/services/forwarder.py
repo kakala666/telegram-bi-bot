@@ -257,63 +257,104 @@ class ForwarderService:
         message: Message,
         ad_result: object,
     ) -> Message:
-        """根据消息类型发送给终端用户（含广告注入），返回发送的消息。"""
+        """根据消息类型发送给终端用户（含广告注入），返回发送的消息。
+
+        广告注入策略（参考 docs/06-广告系统设计.md 第3节）：
+        - 文本消息：广告追加到文本末尾
+        - 带caption的媒体：广告追加到caption末尾（截断至1024字符）
+        - 无caption的媒体（贴纸/语音等）：先发原始消息，再单独发广告消息
+        """
         ad_text = ad_result.text if ad_result else None
         ad_keyboard = ad_result.keyboard if ad_result else None
+        has_ad = ad_text and ad_text != (message.text or message.caption or "")
 
         if message.text:
-            text = ad_text if ad_text else message.text
             return await bot.send_message(
                 chat_id=user_id,
-                text=text,
+                text=ad_text or message.text,
                 reply_markup=ad_keyboard,
+                parse_mode="HTML",
             )
 
         if message.photo:
+            caption = (ad_text or message.caption or "")[:1024]
             return await bot.send_photo(
                 chat_id=user_id,
                 photo=message.photo[-1].file_id,
-                caption=ad_text or message.caption,
+                caption=caption,
                 reply_markup=ad_keyboard,
+                parse_mode="HTML",
             )
 
         if message.video:
+            caption = (ad_text or message.caption or "")[:1024]
             return await bot.send_video(
                 chat_id=user_id,
                 video=message.video.file_id,
-                caption=ad_text or message.caption,
+                caption=caption,
                 reply_markup=ad_keyboard,
+                parse_mode="HTML",
             )
 
         if message.document:
+            caption = (ad_text or message.caption or "")[:1024]
             return await bot.send_document(
                 chat_id=user_id,
                 document=message.document.file_id,
-                caption=ad_text or message.caption,
+                caption=caption,
                 reply_markup=ad_keyboard,
+                parse_mode="HTML",
             )
 
         if message.audio:
+            caption = (ad_text or message.caption or "")[:1024]
             return await bot.send_audio(
                 chat_id=user_id,
                 audio=message.audio.file_id,
-                caption=ad_text or message.caption,
+                caption=caption,
                 reply_markup=ad_keyboard,
+                parse_mode="HTML",
             )
 
-        # voice, sticker, video_note, location, contact 等：
-        # 先 copy 原始消息，再单独发送广告
+        if message.sticker:
+            sent = await bot.send_sticker(
+                chat_id=user_id,
+                sticker=message.sticker.file_id,
+            )
+            if has_ad:
+                await bot.send_message(
+                    chat_id=user_id,
+                    text=ad_text,
+                    reply_markup=ad_keyboard,
+                    parse_mode="HTML",
+                )
+            return sent
+
+        if message.voice:
+            sent = await bot.send_voice(
+                chat_id=user_id,
+                voice=message.voice.file_id,
+            )
+            if has_ad:
+                await bot.send_message(
+                    chat_id=user_id,
+                    text=ad_text,
+                    reply_markup=ad_keyboard,
+                    parse_mode="HTML",
+                )
+            return sent
+
+        # video_note, location, contact 等：copy + 单独广告
         sent = await bot.copy_message(
             chat_id=user_id,
             from_chat_id=message.chat.id,
             message_id=message.message_id,
         )
-
-        if ad_text and ad_text != (message.text or message.caption or ""):
+        if has_ad:
             await bot.send_message(
                 chat_id=user_id,
                 text=ad_text,
                 reply_markup=ad_keyboard,
+                parse_mode="HTML",
             )
-
         return sent

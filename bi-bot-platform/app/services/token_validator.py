@@ -1,6 +1,5 @@
-import re
-
 import logging
+import re
 
 from aiogram import Bot
 

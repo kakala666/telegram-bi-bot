@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from typing import Annotated
+
 from pydantic import field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, NoDecode
 
 
 class Settings(BaseSettings):
@@ -9,7 +11,7 @@ class Settings(BaseSettings):
 
     # --- 主机器人 ---
     MASTER_BOT_TOKEN: str
-    ADMIN_USER_IDS: list[int]
+    ADMIN_USER_IDS: Annotated[list[int], NoDecode]
 
     # --- 数据库 ---
     DATABASE_URL: str = "sqlite+aiosqlite:///data/bot.db"
@@ -44,5 +46,4 @@ class Settings(BaseSettings):
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
-        "enable_decoding": False,
     }

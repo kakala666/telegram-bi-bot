@@ -25,6 +25,8 @@ from app.repositories.bot_repo import BotRepo
 from app.repositories.broadcast_repo import BroadcastRepo
 from app.repositories.message_map_repo import MessageMapRepo
 from app.repositories.user_repo import UserRepo
+from app.services.token_encryptor import TokenEncryptor
+from app.sub_bot.registry import BotRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -123,14 +125,18 @@ async def cb_bot_stop(callback: CallbackQuery, bot_repo: BotRepo) -> None:
 
 @router.callback_query(lambda c: c.data and c.data.startswith("bot_stop_confirm:"))
 async def cb_bot_stop_confirm(
-    callback: CallbackQuery, bot_repo: BotRepo
+    callback: CallbackQuery, bot_repo: BotRepo, registry: BotRegistry
 ) -> None:
     bot_id = int(callback.data.split(":")[1])
     bot = await bot_repo.get_by_id(bot_id)
     if not bot or bot.owner_id != callback.from_user.id:
         await callback.answer("Bot不存在或无权限", show_alert=True)
         return
-    # TODO: registry.remove_bot(bot.bot_id) 当 BotRegistry 实现后
+    # 调用 registry.remove_bot 停止Bot（即使失败也继续更新数据库）
+    try:
+        await registry.remove_bot(bot.bot_id)
+    except Exception as e:
+        logger.warning("Registry停止Bot失败: %s", e)
     await bot_repo.update_status(bot.id, "stopped")
     await callback.message.edit_text(
         f"Bot @{bot.bot_username} 已停止",
@@ -144,19 +150,39 @@ async def cb_bot_stop_confirm(
 
 @router.callback_query(lambda c: c.data and c.data.startswith("bot_restart:"))
 async def cb_bot_restart(
-    callback: CallbackQuery, bot_repo: BotRepo
+    callback: CallbackQuery, bot_repo: BotRepo, registry: BotRegistry, encryptor: TokenEncryptor
 ) -> None:
     bot_id = int(callback.data.split(":")[1])
     bot = await bot_repo.get_by_id(bot_id)
     if not bot or bot.owner_id != callback.from_user.id:
         await callback.answer("Bot不存在或无权限", show_alert=True)
         return
-    # TODO: registry.add_bot(token, bot.bot_id) 当 BotRegistry 实现后
-    await bot_repo.update_status(bot.id, "active")
-    await callback.message.edit_text(
-        f"Bot @{bot.bot_username} 已启动",
-        reply_markup=bot_manage_keyboard(bot.id, "active"),
-    )
+
+    # 获取加密的Token并解密
+    encrypted_token = await bot_repo.get_encrypted_token(bot.id)
+    if not encrypted_token:
+        await callback.message.edit_text(
+            f"Bot @{bot.bot_username} 启动失败：无法获取Token",
+            reply_markup=bot_manage_keyboard(bot.id, bot.status),
+        )
+        await callback.answer()
+        return
+
+    try:
+        token = encryptor.decrypt(encrypted_token)
+        # 调用 registry.add_bot 启动Bot
+        await registry.add_bot(token, bot.bot_id)
+        await bot_repo.update_status(bot.id, "active")
+        await callback.message.edit_text(
+            f"Bot @{bot.bot_username} 已启动",
+            reply_markup=bot_manage_keyboard(bot.id, "active"),
+        )
+    except Exception as e:
+        logger.error("重启Bot失败: %s", e)
+        await callback.message.edit_text(
+            f"Bot @{bot.bot_username} 启动失败: {e}",
+            reply_markup=bot_manage_keyboard(bot.id, bot.status),
+        )
     await callback.answer()
 
 
@@ -189,6 +215,7 @@ async def cb_bot_delete_confirm(
     user_repo: UserRepo,
     msg_map_repo: MessageMapRepo,
     broadcast_repo: BroadcastRepo,
+    registry: BotRegistry,
 ) -> None:
     bot_id = int(callback.data.split(":")[1])
     bot = await bot_repo.get_by_id(bot_id)
@@ -196,7 +223,8 @@ async def cb_bot_delete_confirm(
         await callback.answer("Bot不存在或无权限", show_alert=True)
         return
     username = bot.bot_username
-    # TODO: registry.remove_bot(bot.bot_id) 当 BotRegistry 实现后
+    # 调用 registry.remove_bot 停止Bot
+    await registry.remove_bot(bot.bot_id)
     await msg_map_repo.delete_by_sub_bot(bot.id)
     await broadcast_repo.delete_by_sub_bot(bot.id)
     await user_repo.delete_by_sub_bot(bot.id)
