@@ -30,12 +30,10 @@ class AdInjectorService:
         Returns:
             AdInjectionResult(text, keyboard)
         """
-        ad = await self._ad_repo.get_active_for_bot(sub_bot_id)
+        ad = await self._ad_repo.get_next_ad(sub_bot_id)
 
         if ad is None:
             return AdInjectionResult(text=text or "", keyboard=None)
-
-        await self._ad_repo.increment_impression(ad.id)
 
         ad_line = f"{SEPARATOR}\n{ad.ad_text}"
 
