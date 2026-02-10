@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import delete, select, update
 
-from app.database.models import AdConfig
+from app.database.models import AdConfig, AdRotationState
 from app.dto import AdDTO
 from app.repositories.base import BaseRepository
 
@@ -106,6 +106,108 @@ class AdRepo(BaseRepository):
                 return self._to_dto(global_ad)
 
             return None
+
+    async def get_active_ads_for_pool(
+        self, pool_type: str, sub_bot_id: int
+    ) -> list[AdDTO]:
+        """获取指定池的活跃广告列表，按 priority DESC, id ASC 排序。"""
+        async with self._session_factory() as session:
+            if pool_type == "specific":
+                stmt = (
+                    select(AdConfig)
+                    .where(
+                        AdConfig.target_type == "specific",
+                        AdConfig.target_bot_id == sub_bot_id,
+                        AdConfig.is_active == True,  # noqa: E712
+                    )
+                    .order_by(AdConfig.priority.desc(), AdConfig.id.asc())
+                )
+            else:
+                stmt = (
+                    select(AdConfig)
+                    .where(
+                        AdConfig.target_type == "global",
+                        AdConfig.is_active == True,  # noqa: E712
+                    )
+                    .order_by(AdConfig.priority.desc(), AdConfig.id.asc())
+                )
+            result = await session.scalars(stmt)
+            return [self._to_dto(row) for row in result.all()]
+
+    async def get_next_ad(self, sub_bot_id: int) -> AdDTO | None:
+        """轮询获取下一条广告。
+
+        优先 specific 池，无则回退 global 池。
+        使用 AdRotationState 持久化游标，在同一事务内完成读+选+写。
+        """
+        async with self._session_factory() as session:
+            # 1. 确定池类型和候选列表
+            specific_stmt = (
+                select(AdConfig)
+                .where(
+                    AdConfig.target_type == "specific",
+                    AdConfig.target_bot_id == sub_bot_id,
+                    AdConfig.is_active == True,  # noqa: E712
+                )
+                .order_by(AdConfig.priority.desc(), AdConfig.id.asc())
+            )
+            specific_rows = (await session.scalars(specific_stmt)).all()
+
+            if specific_rows:
+                pool_type = "specific"
+                scope_id = sub_bot_id
+                candidates = specific_rows
+            else:
+                global_stmt = (
+                    select(AdConfig)
+                    .where(
+                        AdConfig.target_type == "global",
+                        AdConfig.is_active == True,  # noqa: E712
+                    )
+                    .order_by(AdConfig.priority.desc(), AdConfig.id.asc())
+                )
+                global_rows = (await session.scalars(global_stmt)).all()
+                if not global_rows:
+                    return None
+                pool_type = "global"
+                scope_id = 0 if pool_type == "global" else sub_bot_id
+                candidates = global_rows
+
+            # 2. 读取或创建 rotation state
+            state_stmt = select(AdRotationState).where(
+                AdRotationState.scope_type == pool_type,
+                AdRotationState.scope_id == scope_id,
+            )
+            state = await session.scalar(state_stmt)
+
+            if state is None:
+                state = AdRotationState(
+                    scope_type=pool_type,
+                    scope_id=scope_id,
+                    cursor=0,
+                    version=0,
+                )
+                session.add(state)
+                await session.flush()
+
+            # 3. 选择广告（cursor 取模保证不越界）
+            cursor = state.cursor % len(candidates)
+            chosen = candidates[cursor]
+
+            # 4. 更新 cursor
+            state.cursor = (cursor + 1) % len(candidates)
+            state.version += 1
+
+            # 5. 递增 impression_count（SQL 原子递增）
+            await session.execute(
+                update(AdConfig)
+                .where(AdConfig.id == chosen.id)
+                .values(impression_count=AdConfig.impression_count + 1)
+            )
+
+            await session.commit()
+
+            return self._to_dto(chosen)
 
     async def update(
         self,
