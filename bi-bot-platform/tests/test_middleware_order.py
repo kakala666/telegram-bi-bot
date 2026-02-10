@@ -35,17 +35,13 @@ class TestMiddlewareOrder:
         aiogram 中间件按注册顺序构成洋葱模型：
         先注册的在外层。ErrorHandlerMiddleware 应在外层才能捕获内层异常。
 
-        当前状态（dispatcher.py）：
-            sub_router.message.middleware(_bot_context_mw)   # 先注册 = 外层
-            sub_router.message.middleware(_error_handler_mw) # 后注册 = 内层  ← 错误
-
         修复后应为：
-            sub_router.message.middleware(_error_handler_mw) # 先注册 = 外层
-            sub_router.message.middleware(_bot_context_mw)   # 后注册 = 内层
+            sub_router.message.outer_middleware(_error_handler_mw) # 先注册 = 外层
+            sub_router.message.outer_middleware(_bot_context_mw)   # 后注册 = 内层
         """
         from app.sub_bot.dispatcher import sub_router
 
-        middlewares = list(sub_router.message.middleware)
+        middlewares = list(sub_router.message.outer_middleware)
         mw_types = [type(mw) for mw in middlewares]
 
         assert ErrorHandlerMiddleware in mw_types, (
@@ -75,7 +71,7 @@ class TestMiddlewareOrder:
         """
         from app.sub_bot.dispatcher import sub_router
 
-        callback_mw_types = [type(mw) for mw in sub_router.callback_query.middleware]
+        callback_mw_types = [type(mw) for mw in sub_router.callback_query.outer_middleware]
 
         assert ErrorHandlerMiddleware in callback_mw_types, (
             "ErrorHandlerMiddleware 未注册到 callback_query 中间件链。"
@@ -87,7 +83,7 @@ class TestMiddlewareOrder:
         """callback_query 中间件中 ErrorHandlerMiddleware 也应在外层。"""
         from app.sub_bot.dispatcher import sub_router
 
-        callback_mw_types = [type(mw) for mw in sub_router.callback_query.middleware]
+        callback_mw_types = [type(mw) for mw in sub_router.callback_query.outer_middleware]
 
         if ErrorHandlerMiddleware not in callback_mw_types:
             pytest.skip("ErrorHandlerMiddleware 未注册到 callback_query，前置测试会 fail")

@@ -19,11 +19,11 @@ sub_router.include_router(user_message.router)
 _error_handler_mw = ErrorHandlerMiddleware()
 _bot_context_mw = BotContextMiddleware()
 
-sub_router.message.middleware(_error_handler_mw)
-sub_router.message.middleware(_bot_context_mw)
+sub_router.message.outer_middleware(_error_handler_mw)
+sub_router.message.outer_middleware(_bot_context_mw)
 
-sub_router.callback_query.middleware(_error_handler_mw)
-sub_router.callback_query.middleware(_bot_context_mw)
+sub_router.callback_query.outer_middleware(_error_handler_mw)
+sub_router.callback_query.outer_middleware(_bot_context_mw)
 
 sub_dp = Dispatcher()
 sub_dp.include_router(sub_router)

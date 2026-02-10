@@ -30,31 +30,39 @@ class TestBug1BotContextMiddlewareRegistration:
     def test_sub_dp_has_bot_context_middleware_registered(self):
         """sub_dp 的 message handler 中间件链应包含 BotContextMiddleware。
 
-        检查 sub_dp 或 sub_router 的 middleware 列表中是否包含
-        BotContextMiddleware 实例。
+        检查 sub_dp 或 sub_router 的 middleware（inner 或 outer）列表中
+        是否包含 BotContextMiddleware 实例。
         """
         from app.sub_bot.dispatcher import sub_dp, sub_router
         from app.sub_bot.middleware.bot_context import BotContextMiddleware
 
-        # 收集 sub_dp 和 sub_router 上所有已注册的中间件类型
+        # 收集 sub_dp 和 sub_router 上所有已注册的中间件类型（inner + outer）
         all_middleware_types: list[type] = []
 
         # 检查 dispatcher 级别的中间件
         for mw in sub_dp.message.middleware:
             all_middleware_types.append(type(mw))
+        for mw in sub_dp.message.outer_middleware:
+            all_middleware_types.append(type(mw))
         for mw in sub_dp.callback_query.middleware:
+            all_middleware_types.append(type(mw))
+        for mw in sub_dp.callback_query.outer_middleware:
             all_middleware_types.append(type(mw))
 
         # 检查 router 级别的中间件
         for mw in sub_router.message.middleware:
             all_middleware_types.append(type(mw))
+        for mw in sub_router.message.outer_middleware:
+            all_middleware_types.append(type(mw))
         for mw in sub_router.callback_query.middleware:
+            all_middleware_types.append(type(mw))
+        for mw in sub_router.callback_query.outer_middleware:
             all_middleware_types.append(type(mw))
 
         assert BotContextMiddleware in all_middleware_types, (
             "BotContextMiddleware 未注册到 sub_dp 或 sub_router。"
             "需要在 sub_bot/dispatcher.py 或 launcher.py 中调用 "
-            "sub_dp.message.middleware(BotContextMiddleware(bot_repo)) 或类似注册。"
+            "sub_dp.message.outer_middleware(BotContextMiddleware(bot_repo)) 或类似注册。"
         )
 
     def test_bot_context_middleware_registered_for_message_updates(self):
@@ -68,7 +76,11 @@ class TestBug1BotContextMiddlewareRegistration:
         message_middleware_types = [
             type(mw) for mw in sub_dp.message.middleware
         ] + [
+            type(mw) for mw in sub_dp.message.outer_middleware
+        ] + [
             type(mw) for mw in sub_router.message.middleware
+        ] + [
+            type(mw) for mw in sub_router.message.outer_middleware
         ]
 
         assert BotContextMiddleware in message_middleware_types, (
