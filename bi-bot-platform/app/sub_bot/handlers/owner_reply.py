@@ -5,13 +5,14 @@ from aiogram.types import Message
 
 from app.dto import SubBotDTO
 from app.services.forwarder import ForwarderService
+from app.sub_bot.filters import IsOwnerFilter
 
 logger = logging.getLogger(__name__)
 
 router = Router(name="sub_owner_reply")
 
 
-@router.message()
+@router.message(IsOwnerFilter(is_owner=True))
 async def handle_owner_message(
     message: Message,
     bot: Bot,
@@ -23,9 +24,6 @@ async def handle_owner_message(
     此handler仅处理主人的消息。
     路由逻辑在 dispatcher 层通过 filter 区分。
     """
-    if message.from_user.id != sub_bot.owner_id:
-        return
-
     result = await forwarder.reply_to_user(bot, sub_bot, message)
     if not result.success:
         logger.debug(

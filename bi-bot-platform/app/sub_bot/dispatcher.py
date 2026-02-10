@@ -15,12 +15,15 @@ sub_router.include_router(owner_reply.router)
 sub_router.include_router(user_message.router)
 
 # 注册中间件（bot_repo 在运行时通过 workflow_data 注入）
-_bot_context_mw = BotContextMiddleware()
-sub_router.message.middleware(_bot_context_mw)
-sub_router.callback_query.middleware(_bot_context_mw)
-
+# 洋葱模型：先注册的在外层，ErrorHandler 应在外层才能捕获 BotContext 异常
 _error_handler_mw = ErrorHandlerMiddleware()
+_bot_context_mw = BotContextMiddleware()
+
 sub_router.message.middleware(_error_handler_mw)
+sub_router.message.middleware(_bot_context_mw)
+
+sub_router.callback_query.middleware(_error_handler_mw)
+sub_router.callback_query.middleware(_bot_context_mw)
 
 sub_dp = Dispatcher()
 sub_dp.include_router(sub_router)
@@ -30,4 +33,4 @@ sub_dp.include_router(sub_router)
 async def on_sub_dp_error(event: ErrorEvent) -> bool:
     """全局错误处理：捕获子Bot未处理异常"""
     logger.exception("子Bot dispatcher 未捕获异常: %s", event.exception)
-    return True
+    return False
