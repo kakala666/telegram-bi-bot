@@ -14,13 +14,14 @@ from app.master_bot.keyboards.inline import (
     back_home_keyboard,
     bot_list_keyboard,
     bot_manage_keyboard,
+    broadcast_cancel_keyboard,
     confirm_delete_keyboard,
     confirm_stop_keyboard,
     no_bot_keyboard,
     user_list_keyboard,
     welcome_keyboard,
 )
-from app.master_bot.states import WelcomeStates
+from app.master_bot.states import BroadcastStates, WelcomeStates
 from app.repositories.bot_repo import BotRepo
 from app.repositories.broadcast_repo import BroadcastRepo
 from app.repositories.message_map_repo import MessageMapRepo
@@ -180,7 +181,7 @@ async def cb_bot_restart(
     except Exception as e:
         logger.error("重启Bot失败: %s", e)
         await callback.message.edit_text(
-            f"Bot @{bot.bot_username} 启动失败: {e}",
+            f"Bot @{bot.bot_username} 启动失败，请稍后重试",
             reply_markup=bot_manage_keyboard(bot.id, bot.status),
         )
     await callback.answer()
@@ -347,6 +348,39 @@ async def cb_bot_users(
     await callback.message.edit_text(
         "\n".join(lines),
         reply_markup=user_list_keyboard(bot.id, page, result.total_pages),
+    )
+    await callback.answer()
+
+
+# ── 广播消息入口（bot_broadcast:{id}）────────────────────────
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("bot_broadcast:"))
+async def cb_bot_broadcast(
+    callback: CallbackQuery, bot_repo: BotRepo, user_repo: UserRepo, state: FSMContext
+) -> None:
+    """管理面板广播入口 - 进入广播FSM流程"""
+    bot_id = int(callback.data.split(":")[1])
+    bot = await bot_repo.get_by_id(bot_id)
+    if not bot or bot.owner_id != callback.from_user.id:
+        await callback.answer("Bot不存在或无权限", show_alert=True)
+        return
+
+    active_count = await user_repo.count_active(bot.id)
+
+    await state.update_data(broadcast_bot_id=bot.id)
+    await state.set_state(BroadcastStates.waiting_content)
+
+    await callback.message.edit_text(
+        f"准备向 @{bot.bot_username} 的 {active_count} 个活跃用户广播消息\n\n"
+        "请发送要广播的内容\n\n"
+        "支持的内容类型:\n"
+        "- 文字消息\n"
+        "- 图片（可带文字说明）\n"
+        "- 视频（可带文字说明）\n"
+        "- 文件\n"
+        "- 音频",
+        reply_markup=broadcast_cancel_keyboard(),
     )
     await callback.answer()
 

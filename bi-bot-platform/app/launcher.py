@@ -10,6 +10,7 @@ from aiogram import Bot, Dispatcher
 from app.config import Settings
 from app.database.engine import create_engine, create_session_factory
 from app.database.models import Base
+from app.logging_config import setup_logging
 from app.master_bot.dispatcher import master_dp, master_router
 from app.repositories.ad_repo import AdRepo
 from app.repositories.bot_repo import BotRepo
@@ -32,6 +33,9 @@ async def main() -> None:
     """主入口函数"""
     # 1. 加载配置
     settings = Settings()
+
+    # 1.5 配置结构化日志
+    setup_logging(settings)
 
     # 2. 初始化数据库引擎
     engine = create_engine(settings)
@@ -58,10 +62,26 @@ async def main() -> None:
     registry = BotRegistry(sub_dp, bot_repo, encryptor)
 
     # 7. 创建 BroadcastService（依赖 registry）
-    broadcast_svc = BroadcastService(broadcast_repo, user_repo, registry)
+    broadcast_svc = BroadcastService(broadcast_repo, user_repo, registry, bot_repo=bot_repo)
 
     # 8. 创建 CleanupService
     cleanup_svc = CleanupService(msg_map_repo, broadcast_repo, settings)
+
+    # 8.5 创建默认广告（首次启动时）
+    existing_ads = await ad_repo.get_all()
+    if not existing_ads:
+        logger.info("首次启动，创建默认广告...")
+        await ad_repo.create(
+            name="默认广告",
+            ad_text=settings.DEFAULT_AD_TEXT,
+            ad_url=settings.DEFAULT_AD_URL or None,
+            button_text=None,
+            button_url=None,
+            target_type="global",
+            target_bot_id=None,
+            priority=0,
+        )
+        logger.info("默认广告已创建")
 
     # 9. 注入依赖到 master_dp workflow_data
     master_dp.workflow_data.update({
@@ -94,6 +114,9 @@ async def main() -> None:
     recovery_result = await registry.recover_all()
     logger.info("恢复完成: %s", recovery_result)
 
+    # 11.5 启动定期清理任务
+    await cleanup_svc.start_periodic(interval_hours=24)
+
     # 12. 启动 Master Bot polling
     logger.info("Starting master bot polling...")
     try:
@@ -101,6 +124,7 @@ async def main() -> None:
     finally:
         # 13. 清理资源
         logger.info("Shutting down...")
+        await cleanup_svc.stop()
         await registry.shutdown()
         await engine.dispose()
         logger.info("Shutdown complete.")

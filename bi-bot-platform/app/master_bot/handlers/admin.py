@@ -10,6 +10,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from app.config import Settings
 from app.repositories.bot_repo import BotRepo
+from app.repositories.broadcast_repo import BroadcastRepo
 from app.repositories.message_map_repo import MessageMapRepo
 from app.repositories.user_repo import UserRepo
 from app.sub_bot.registry import BotRegistry
@@ -32,6 +33,7 @@ def _admin_panel_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="查看统计", callback_data="adm_stats"),
         ],
         [
+            InlineKeyboardButton(text="广告管理", callback_data="ad_list"),
             InlineKeyboardButton(text="系统状态", callback_data="adm_system"),
         ],
         [
@@ -85,7 +87,7 @@ async def admin_command(
     message: Message,
     bot_repo: BotRepo,
     user_repo: UserRepo,
-    message_map_repo: MessageMapRepo,
+    msg_map_repo: MessageMapRepo,
     settings: Settings,
 ) -> None:
     """管理员面板入口"""
@@ -96,7 +98,7 @@ async def admin_command(
     # 获取统计数据
     bot_counts = await bot_repo.count_all()
     total_users = await user_repo.count_total_users()
-    total_maps = await message_map_repo.count_all()
+    total_maps = await msg_map_repo.count_all()
 
     text = (
         "平台管理面板\n\n"
@@ -120,7 +122,7 @@ async def admin_panel_callback(
     callback: CallbackQuery,
     bot_repo: BotRepo,
     user_repo: UserRepo,
-    message_map_repo: MessageMapRepo,
+    msg_map_repo: MessageMapRepo,
     settings: Settings,
 ) -> None:
     """返回管理面板"""
@@ -130,7 +132,7 @@ async def admin_panel_callback(
 
     bot_counts = await bot_repo.count_all()
     total_users = await user_repo.count_total_users()
-    total_maps = await message_map_repo.count_all()
+    total_maps = await msg_map_repo.count_all()
 
     text = (
         "平台管理面板\n\n"
@@ -310,7 +312,7 @@ async def admin_view_statistics(
     callback: CallbackQuery,
     bot_repo: BotRepo,
     user_repo: UserRepo,
-    message_map_repo: MessageMapRepo,
+    msg_map_repo: MessageMapRepo,
     settings: Settings,
 ) -> None:
     """查看统计信息"""
@@ -320,7 +322,7 @@ async def admin_view_statistics(
 
     bot_counts = await bot_repo.count_all()
     total_users = await user_repo.count_total_users()
-    total_maps = await message_map_repo.count_all()
+    total_maps = await msg_map_repo.count_all()
 
     text = (
         "平台统计信息\n\n"
@@ -365,14 +367,174 @@ async def admin_view_system_status(
     text = (
         "系统状态\n\n"
         f"活跃Bot数: {running_bots}\n"
-        f"数据库Bot总数: {bot_counts['total']}\n"
-        f"数据库: {settings.DATABASE_URL}"
+        f"数据库Bot总数: {bot_counts['total']}"
     )
 
     await callback.message.edit_text(
         text,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="返回管理面板", callback_data="adm_panel")],
+        ]),
+    )
+    await callback.answer()
+
+
+# ── 强制删除Bot ──────────────────────────────────────────────
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("adm_force_delete:") and "confirm" not in c.data)
+async def admin_force_delete(
+    callback: CallbackQuery,
+    bot_repo: BotRepo,
+    user_repo: UserRepo,
+    msg_map_repo: MessageMapRepo,
+    broadcast_repo: BroadcastRepo,
+    registry: BotRegistry,
+    settings: Settings,
+) -> None:
+    """管理员强制删除Bot（第一步：确认提示）"""
+    if not _is_admin(callback.from_user.id, settings):
+        await callback.answer("你没有权限", show_alert=True)
+        return
+
+    bot_id = int(callback.data.split(":")[1])
+    bot = await bot_repo.get_by_id(bot_id)
+
+    if not bot:
+        await callback.answer("Bot不存在", show_alert=True)
+        return
+
+    await callback.message.edit_text(
+        f"确定要强制删除 @{bot.bot_username} 吗？\n\n"
+        "此操作将：\n"
+        "- 停止Bot运行\n"
+        "- 删除所有用户数据\n"
+        "- 删除所有消息映射\n"
+        "- 删除所有广播记录\n"
+        "- 删除Bot记录\n\n"
+        "此操作不可撤销！",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="确认删除",
+                    callback_data=f"adm_force_delete_confirm:{bot_id}",
+                ),
+                InlineKeyboardButton(
+                    text="取消",
+                    callback_data=f"adm_bot_detail:{bot_id}",
+                ),
+            ],
+        ]),
+    )
+    await callback.answer()
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("adm_force_delete_confirm:"))
+async def admin_force_delete_confirm(
+    callback: CallbackQuery,
+    bot_repo: BotRepo,
+    user_repo: UserRepo,
+    msg_map_repo: MessageMapRepo,
+    broadcast_repo: BroadcastRepo,
+    registry: BotRegistry,
+    settings: Settings,
+) -> None:
+    """管理员强制删除Bot - 确认执行"""
+    if not _is_admin(callback.from_user.id, settings):
+        await callback.answer("你没有权限", show_alert=True)
+        return
+
+    bot_id = int(callback.data.split(":")[1])
+    bot = await bot_repo.get_by_id(bot_id)
+
+    if not bot:
+        await callback.answer("Bot不存在", show_alert=True)
+        return
+
+    username = bot.bot_username
+
+    try:
+        await registry.remove_bot(bot.bot_id)
+    except Exception as e:
+        logger.warning("Registry停止Bot失败: %s", e)
+
+    await msg_map_repo.delete_by_sub_bot(bot.id)
+    await broadcast_repo.delete_by_sub_bot(bot.id)
+    await user_repo.delete_by_sub_bot(bot.id)
+    await bot_repo.delete(bot.id)
+
+    await callback.message.edit_text(
+        f"Bot @{username} 已被强制删除",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="返回列表", callback_data="adm_bots")],
+        ]),
+    )
+    await callback.answer()
+
+
+# ── 查看Bot用户列表 ──────────────────────────────────────────
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("adm_bot_users:"))
+async def admin_bot_users(
+    callback: CallbackQuery,
+    bot_repo: BotRepo,
+    user_repo: UserRepo,
+    settings: Settings,
+) -> None:
+    """管理员查看Bot用户列表（分页）"""
+    if not _is_admin(callback.from_user.id, settings):
+        await callback.answer("你没有权限", show_alert=True)
+        return
+
+    parts = callback.data.split(":")
+    bot_id = int(parts[1])
+    page = int(parts[2]) if len(parts) > 2 else 1
+
+    bot = await bot_repo.get_by_id(bot_id)
+    if not bot:
+        await callback.answer("Bot不存在", show_alert=True)
+        return
+
+    result = await user_repo.get_users_paginated(bot.id, page, page_size=10)
+
+    if not result.items:
+        await callback.message.edit_text(
+            f"@{bot.bot_username} 还没有用户",
+            reply_markup=_bot_detail_keyboard(bot.id, bot.status),
+        )
+        await callback.answer()
+        return
+
+    lines = [f"@{bot.bot_username} 的用户列表 (共{result.total}人)\n"]
+    for i, user in enumerate(result.items, (page - 1) * 10 + 1):
+        status = "已封禁" if user.is_blocked else "活跃"
+        name = user.display_name
+        if user.username:
+            name += f" (@{user.username})"
+        else:
+            name += f" (ID:{user.user_id})"
+        last = user.last_active.strftime("%Y-%m-%d %H:%M")
+        lines.append(f"{i}. {name} - {status}\n   最后活跃: {last}")
+
+    nav_buttons: list[InlineKeyboardButton] = []
+    if page > 1:
+        nav_buttons.append(
+            InlineKeyboardButton(text="上一页", callback_data=f"adm_bot_users:{bot_id}:{page - 1}")
+        )
+    nav_buttons.append(
+        InlineKeyboardButton(text=f"第{page}/{result.total_pages}页", callback_data="noop")
+    )
+    if page < result.total_pages:
+        nav_buttons.append(
+            InlineKeyboardButton(text="下一页", callback_data=f"adm_bot_users:{bot_id}:{page + 1}")
+        )
+
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            nav_buttons,
+            [InlineKeyboardButton(text="返回Bot详情", callback_data=f"adm_bot_detail:{bot_id}")],
         ]),
     )
     await callback.answer()

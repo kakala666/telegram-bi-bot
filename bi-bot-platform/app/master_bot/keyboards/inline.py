@@ -283,6 +283,7 @@ def ad_confirm_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [
             InlineKeyboardButton(text="确认添加", callback_data="ad_confirm"),
+            InlineKeyboardButton(text="重新编辑", callback_data="ad_re_edit"),
             InlineKeyboardButton(text="取消", callback_data="ad_cancel"),
         ],
     ])

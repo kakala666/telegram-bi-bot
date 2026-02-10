@@ -1,6 +1,6 @@
 from aiogram import Router
 from aiogram.filters import Command
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import Message
 
 from app.master_bot.keyboards.inline import back_home_keyboard, home_keyboard
 
@@ -46,17 +46,3 @@ async def cmd_start(message: Message) -> None:
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
     await message.answer(HELP_TEXT, parse_mode="HTML", reply_markup=back_home_keyboard())
-
-
-@router.callback_query(lambda c: c.data == "nav_home")
-async def cb_home(callback: CallbackQuery) -> None:
-    await callback.message.edit_text(WELCOME_TEXT, reply_markup=home_keyboard())
-    await callback.answer()
-
-
-@router.callback_query(lambda c: c.data == "nav_help")
-async def cb_help(callback: CallbackQuery) -> None:
-    await callback.message.edit_text(
-        HELP_TEXT, parse_mode="HTML", reply_markup=back_home_keyboard()
-    )
-    await callback.answer()

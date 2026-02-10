@@ -26,4 +26,7 @@ class AdStates(StatesGroup):
     waiting_ad_name = State()
     waiting_ad_text = State()
     waiting_ad_button = State()
+    waiting_ad_priority = State()
     confirming_ad = State()
+    editing_ad_text = State()
+    editing_ad_priority = State()

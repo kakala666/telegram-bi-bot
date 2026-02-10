@@ -71,6 +71,11 @@ class BotRegistry:
         """获取Bot实例"""
         return self._bots.get(bot_id)
 
+    @property
+    def bot_repo(self) -> BotRepo:
+        """获取 BotRepo 实例"""
+        return self._bot_repo
+
     def get_all_bot_ids(self) -> list[int]:
         """获取所有运行中的Bot ID列表"""
         return list(self._bots.keys())

@@ -111,7 +111,7 @@ class TestAdminCommandAdminOnly:
             message,
             bot_repo=bot_repo,
             user_repo=user_repo,
-            message_map_repo=message_map_repo,
+            msg_map_repo=message_map_repo,
             settings=settings,
         )
 
@@ -138,7 +138,7 @@ class TestAdminCommandAdminOnly:
             message,
             bot_repo=bot_repo,
             user_repo=user_repo,
-            message_map_repo=message_map_repo,
+            msg_map_repo=message_map_repo,
             settings=settings,
         )
 
@@ -175,7 +175,7 @@ class TestAdminShowsSystemStatus:
             message,
             bot_repo=bot_repo,
             user_repo=user_repo,
-            message_map_repo=message_map_repo,
+            msg_map_repo=message_map_repo,
             settings=settings,
         )
 
@@ -325,7 +325,7 @@ class TestAdminViewStatistics:
             callback,
             bot_repo=bot_repo,
             user_repo=user_repo,
-            message_map_repo=message_map_repo,
+            msg_map_repo=message_map_repo,
             settings=settings,
         )
 

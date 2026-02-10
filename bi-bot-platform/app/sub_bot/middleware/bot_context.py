@@ -17,7 +17,7 @@ class BotContextMiddleware(BaseMiddleware):
     如果 bot_id 不在数据库中或状态不是 active，则跳过处理。
     """
 
-    def __init__(self, bot_repo: BotRepo) -> None:
+    def __init__(self, bot_repo: BotRepo | None = None) -> None:
         self._bot_repo = bot_repo
 
     async def __call__(
@@ -26,10 +26,15 @@ class BotContextMiddleware(BaseMiddleware):
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
+        bot_repo = self._bot_repo or data.get("bot_repo")
+        if not bot_repo:
+            logger.warning("BotContextMiddleware: bot_repo 不可用，跳过")
+            return await handler(event, data)
+
         bot: Bot = data["bot"]
         bot_id = bot.id
 
-        sub_bot = await self._bot_repo.get_by_bot_id(bot_id)
+        sub_bot = await bot_repo.get_by_bot_id(bot_id)
 
         if sub_bot is None:
             logger.warning("收到未知 bot_id=%s 的消息，忽略", bot_id)

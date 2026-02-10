@@ -68,13 +68,19 @@ async def cmd_ad(message: Message, settings: Settings, ad_repo: AdRepo) -> None:
 
 
 @router.callback_query(lambda c: c.data == "ad_list")
-async def cb_ad_list(callback: CallbackQuery, ad_repo: AdRepo) -> None:
+async def cb_ad_list(callback: CallbackQuery, ad_repo: AdRepo, settings: Settings) -> None:
+    if not _is_admin(callback.from_user.id, settings):
+        await callback.answer("你没有权限", show_alert=True)
+        return
     await _show_ad_list(callback, ad_repo, edit=True)
     await callback.answer()
 
 
 @router.callback_query(lambda c: c.data and c.data.startswith("ad_detail:"))
-async def cb_ad_detail(callback: CallbackQuery, ad_repo: AdRepo) -> None:
+async def cb_ad_detail(callback: CallbackQuery, ad_repo: AdRepo, settings: Settings) -> None:
+    if not _is_admin(callback.from_user.id, settings):
+        await callback.answer("你没有权限", show_alert=True)
+        return
     ad_id = int(callback.data.split(":")[1])
     ad = await ad_repo.get_by_id(ad_id)
     if ad is None:
@@ -101,7 +107,10 @@ async def cb_ad_detail(callback: CallbackQuery, ad_repo: AdRepo) -> None:
 
 
 @router.callback_query(lambda c: c.data and c.data.startswith("ad_toggle:"))
-async def cb_ad_toggle(callback: CallbackQuery, ad_repo: AdRepo) -> None:
+async def cb_ad_toggle(callback: CallbackQuery, ad_repo: AdRepo, settings: Settings) -> None:
+    if not _is_admin(callback.from_user.id, settings):
+        await callback.answer("你没有权限", show_alert=True)
+        return
     ad_id = int(callback.data.split(":")[1])
     ad = await ad_repo.get_by_id(ad_id)
     if ad is None:
@@ -128,7 +137,10 @@ async def cb_ad_toggle(callback: CallbackQuery, ad_repo: AdRepo) -> None:
 
 
 @router.callback_query(lambda c: c.data and c.data.startswith("ad_delete:"))
-async def cb_ad_delete(callback: CallbackQuery, ad_repo: AdRepo) -> None:
+async def cb_ad_delete(callback: CallbackQuery, ad_repo: AdRepo, settings: Settings) -> None:
+    if not _is_admin(callback.from_user.id, settings):
+        await callback.answer("你没有权限", show_alert=True)
+        return
     ad_id = int(callback.data.split(":")[1])
     ad = await ad_repo.get_by_id(ad_id)
     if ad is None:
@@ -142,7 +154,10 @@ async def cb_ad_delete(callback: CallbackQuery, ad_repo: AdRepo) -> None:
 
 
 @router.callback_query(lambda c: c.data and c.data.startswith("ad_delete_confirm:"))
-async def cb_ad_delete_confirm(callback: CallbackQuery, ad_repo: AdRepo) -> None:
+async def cb_ad_delete_confirm(callback: CallbackQuery, ad_repo: AdRepo, settings: Settings) -> None:
+    if not _is_admin(callback.from_user.id, settings):
+        await callback.answer("你没有权限", show_alert=True)
+        return
     ad_id = int(callback.data.split(":")[1])
     await ad_repo.delete(ad_id)
     await callback.answer("广告已删除")
@@ -153,7 +168,10 @@ async def cb_ad_delete_confirm(callback: CallbackQuery, ad_repo: AdRepo) -> None
 
 
 @router.callback_query(lambda c: c.data == "ad_add")
-async def cb_ad_add(callback: CallbackQuery, state: FSMContext) -> None:
+async def cb_ad_add(callback: CallbackQuery, state: FSMContext, settings: Settings) -> None:
+    if not _is_admin(callback.from_user.id, settings):
+        await callback.answer("你没有权限", show_alert=True)
+        return
     await state.set_state(AdStates.waiting_ad_name)
     await callback.message.edit_text(
         "请输入广告名称（管理用）\n\n例如: \"默认广告\"、\"春节活动\"",
@@ -246,8 +264,12 @@ async def on_ad_button(message: Message, state: FSMContext) -> None:
 @router.callback_query(lambda c: c.data == "ad_scope_global")
 async def cb_ad_scope_global(callback: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(target_type="global", target_bot_id=None)
-    await state.set_state(AdStates.confirming_ad)
-    await _show_ad_preview(callback, state)
+    await state.set_state(AdStates.waiting_ad_priority)
+    await callback.message.edit_text(
+        "请输入广告优先级（数字，越大越优先）\n\n"
+        "例如: 0（默认）、10（高优先级）",
+        reply_markup=cancel_keyboard(),
+    )
     await callback.answer()
 
 
@@ -278,6 +300,23 @@ async def on_ad_target_bot_id(message: Message, state: FSMContext) -> None:
         return
 
     await state.update_data(target_bot_id=int(text))
+    await state.set_state(AdStates.waiting_ad_priority)
+    await message.answer(
+        "请输入广告优先级（数字，越大越优先）\n\n"
+        "例如: 0（默认）、10（高优先级）",
+        reply_markup=cancel_keyboard(),
+    )
+
+
+@router.message(AdStates.waiting_ad_priority)
+async def on_ad_priority(message: Message, state: FSMContext) -> None:
+    """接收广告优先级"""
+    text = (message.text or "").strip()
+    if not text.lstrip("-").isdigit():
+        await message.answer("请输入有效的数字", reply_markup=cancel_keyboard())
+        return
+    await state.update_data(priority=int(text))
+    await state.set_state(AdStates.confirming_ad)
     await _show_ad_preview_msg(message, state)
 
 
@@ -328,7 +367,7 @@ async def cb_ad_confirm(
         button_url=data.get("button_url"),
         target_type=data.get("target_type", "global"),
         target_bot_id=data.get("target_bot_id"),
-        priority=0,
+        priority=data.get("priority", 0),
     )
     await state.clear()
     await callback.answer("广告已添加并启用")
@@ -340,3 +379,124 @@ async def cb_ad_cancel(callback: CallbackQuery, state: FSMContext, ad_repo: AdRe
     await state.clear()
     await callback.answer("已取消")
     await _show_ad_list(callback, ad_repo, edit=True)
+
+
+# ===== 重新编辑 =====
+
+
+@router.callback_query(lambda c: c.data == "ad_re_edit")
+async def cb_ad_re_edit(callback: CallbackQuery, state: FSMContext) -> None:
+    """重新编辑 - 回到输入广告名称步骤"""
+    await state.set_state(AdStates.waiting_ad_name)
+    await callback.message.edit_text(
+        "请重新输入广告名称（管理用）\n\n例如: \"默认广告\"、\"春节活动\"",
+        reply_markup=cancel_keyboard(),
+    )
+    await callback.answer()
+
+
+# ===== 编辑广告内容 =====
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("ad_edit_text:"))
+async def cb_ad_edit_text(callback: CallbackQuery, state: FSMContext, ad_repo: AdRepo, settings: Settings) -> None:
+    """编辑广告内容 - 进入FSM等待新文本"""
+    if not _is_admin(callback.from_user.id, settings):
+        await callback.answer("你没有权限", show_alert=True)
+        return
+    ad_id = int(callback.data.split(":")[1])
+    ad = await ad_repo.get_by_id(ad_id)
+    if ad is None:
+        await callback.answer("广告不存在", show_alert=True)
+        return
+
+    await state.set_state(AdStates.editing_ad_text)
+    await state.update_data(editing_ad_id=ad_id)
+    await callback.message.edit_text(
+        f"正在编辑广告 \"{ad.name}\" 的内容\n\n"
+        f"当前内容:\n{SEPARATOR}\n{ad.ad_text}\n{SEPARATOR}\n\n"
+        "请发送新的广告文本:",
+        reply_markup=cancel_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.message(AdStates.editing_ad_text)
+async def on_edit_ad_text(message: Message, state: FSMContext, ad_repo: AdRepo) -> None:
+    """接收编辑后的广告文本"""
+    data = await state.get_data()
+    ad_id = data.get("editing_ad_id")
+    if not ad_id:
+        await state.clear()
+        return
+
+    new_text = (message.text or "").strip()
+    if not new_text:
+        await message.answer("广告文本不能为空，请重新输入", reply_markup=cancel_keyboard())
+        return
+
+    await ad_repo.update(ad_id, ad_text=new_text)
+    await state.clear()
+
+    ad = await ad_repo.get_by_id(ad_id)
+    if ad:
+        await message.answer(
+            f"广告 \"{ad.name}\" 内容已更新",
+            reply_markup=ad_detail_keyboard(ad.id, ad.is_active),
+        )
+    else:
+        await message.answer("广告内容已更新")
+
+
+# ===== 编辑广告优先级 =====
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("ad_edit_priority:"))
+async def cb_ad_edit_priority(callback: CallbackQuery, state: FSMContext, ad_repo: AdRepo, settings: Settings) -> None:
+    """编辑广告优先级 - 进入FSM等待新优先级"""
+    if not _is_admin(callback.from_user.id, settings):
+        await callback.answer("你没有权限", show_alert=True)
+        return
+    ad_id = int(callback.data.split(":")[1])
+    ad = await ad_repo.get_by_id(ad_id)
+    if ad is None:
+        await callback.answer("广告不存在", show_alert=True)
+        return
+
+    await state.set_state(AdStates.editing_ad_priority)
+    await state.update_data(editing_ad_id=ad_id)
+    await callback.message.edit_text(
+        f"正在编辑广告 \"{ad.name}\" 的优先级\n\n"
+        f"当前优先级: {ad.priority}\n\n"
+        "请输入新的优先级（数字，越大越优先）:",
+        reply_markup=cancel_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.message(AdStates.editing_ad_priority)
+async def on_edit_ad_priority(message: Message, state: FSMContext, ad_repo: AdRepo) -> None:
+    """接收编辑后的广告优先级"""
+    data = await state.get_data()
+    ad_id = data.get("editing_ad_id")
+    if not ad_id:
+        await state.clear()
+        return
+
+    text = (message.text or "").strip()
+    if not text.lstrip("-").isdigit():
+        await message.answer("请输入有效的数字", reply_markup=cancel_keyboard())
+        return
+
+    new_priority = int(text)
+    await ad_repo.update(ad_id, priority=new_priority)
+    await state.clear()
+
+    ad = await ad_repo.get_by_id(ad_id)
+    if ad:
+        await message.answer(
+            f"广告 \"{ad.name}\" 优先级已更新为 {new_priority}",
+            reply_markup=ad_detail_keyboard(ad.id, ad.is_active),
+        )
+    else:
+        await message.answer("广告优先级已更新")

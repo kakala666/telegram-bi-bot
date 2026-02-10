@@ -15,6 +15,7 @@ from app.exceptions import BroadcastError
 if TYPE_CHECKING:
     from aiogram import Bot
 
+    from app.repositories.bot_repo import BotRepo
     from app.repositories.broadcast_repo import BroadcastRepo
     from app.repositories.user_repo import UserRepo
     from app.sub_bot.registry import BotRegistry
@@ -30,10 +31,12 @@ class BroadcastService:
         broadcast_repo: BroadcastRepo,
         user_repo: UserRepo,
         bot_registry: BotRegistry,
+        bot_repo: BotRepo | None = None,
     ) -> None:
         self._broadcast_repo = broadcast_repo
         self._user_repo = user_repo
         self._registry = bot_registry
+        self._bot_repo = bot_repo
         self._running_tasks: dict[int, asyncio.Task] = {}
 
     async def start(
@@ -163,7 +166,19 @@ class BroadcastService:
         content_caption: str | None,
     ) -> None:
         """异步执行广播（内部方法）"""
-        bot = self._registry.get_bot(sub_bot_id)
+        # 通过 bot_repo 将 sub_bot_id（数据库主键）解析为 bot_id（Telegram ID）
+        bot = None
+        bot_repo = self._bot_repo
+        if bot_repo is not None:
+            try:
+                sub_bot_dto = await bot_repo.get_by_id(sub_bot_id)
+                if sub_bot_dto:
+                    bot = self._registry.get_bot(sub_bot_dto.bot_id)
+            except Exception:
+                logger.debug("通过 bot_repo 解析 bot_id 失败")
+        if bot is None:
+            # 兼容回退：直接用 sub_bot_id 查找（旧版本行为）
+            bot = self._registry.get_bot(sub_bot_id)
         if not bot:
             logger.error("Bot不存在或未运行 sub_bot_id=%s", sub_bot_id)
             await self._broadcast_repo.update_status(task_id, "failed", completed_at=datetime.now(timezone.utc))
