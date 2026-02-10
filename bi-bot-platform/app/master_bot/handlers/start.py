@@ -34,7 +34,11 @@ HELP_TEXT = (
     "   /register - 注册新Bot\n"
     "   /mybot    - 管理我的Bot\n"
     "   /broadcast - 群发消息\n"
-    "   /block    - 封禁用户"
+    "   /block    - 封禁用户\n"
+    "\n"
+    "4. <b>管理员命令</b>\n"
+    "   /admin   - 管理面板\n"
+    "   /ad      - 广告管理"
 )
 
 
