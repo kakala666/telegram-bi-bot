@@ -14,14 +14,13 @@ from app.master_bot.keyboards.inline import (
     back_home_keyboard,
     bot_list_keyboard,
     bot_manage_keyboard,
-    broadcast_cancel_keyboard,
     confirm_delete_keyboard,
     confirm_stop_keyboard,
     no_bot_keyboard,
     user_list_keyboard,
     welcome_keyboard,
 )
-from app.master_bot.states import BroadcastStates, WelcomeStates
+from app.master_bot.states import WelcomeStates
 from app.repositories.bot_repo import BotRepo
 from app.repositories.broadcast_repo import BroadcastRepo
 from app.repositories.message_map_repo import MessageMapRepo
@@ -359,28 +358,17 @@ async def cb_bot_users(
 async def cb_bot_broadcast(
     callback: CallbackQuery, bot_repo: BotRepo, user_repo: UserRepo, state: FSMContext
 ) -> None:
-    """管理面板广播入口 - 进入广播FSM流程"""
+    """管理面板广播入口 - 重定向到子Bot操作"""
     bot_id = int(callback.data.split(":")[1])
     bot = await bot_repo.get_by_id(bot_id)
     if not bot or bot.owner_id != callback.from_user.id:
         await callback.answer("Bot不存在或无权限", show_alert=True)
         return
 
-    active_count = await user_repo.count_active(bot.id)
-
-    await state.update_data(broadcast_bot_id=bot.id)
-    await state.set_state(BroadcastStates.waiting_content)
-
     await callback.message.edit_text(
-        f"准备向 @{bot.bot_username} 的 {active_count} 个活跃用户广播消息\n\n"
-        "请发送要广播的内容\n\n"
-        "支持的内容类型:\n"
-        "- 文字消息\n"
-        "- 图片（可带文字说明）\n"
-        "- 视频（可带文字说明）\n"
-        "- 文件\n"
-        "- 音频",
-        reply_markup=broadcast_cancel_keyboard(),
+        f"广播功能已迁移到子Bot中操作。\n\n"
+        f"请在 @{bot.bot_username} 中直接发送 /broadcast 命令发起广播。",
+        reply_markup=bot_manage_keyboard(bot.id, bot.status),
     )
     await callback.answer()
 

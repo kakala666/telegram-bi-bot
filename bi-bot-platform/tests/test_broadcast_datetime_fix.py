@@ -218,7 +218,10 @@ class TestBroadcastDatetimeFix:
         当前 handler 只捕获 BroadcastError，TypeError 会逃逸。
         修复后应捕获更广泛的异常并返回友好错误消息。
         """
-        from app.master_bot.handlers.broadcast import cb_broadcast_confirm
+        from aiogram import Bot
+
+        from app.dto import SubBotDTO
+        from app.sub_bot.handlers.broadcast import cb_broadcast_confirm
 
         # 构造 mock callback
         callback = MagicMock()
@@ -240,9 +243,8 @@ class TestBroadcastDatetimeFix:
         })
         state.clear = AsyncMock()
 
-        # 构造 mock bot_repo
-        bot_repo = MagicMock()
-        bot_repo.get_by_id = AsyncMock(return_value=SubBotDTO(
+        # 构造 mock sub_bot
+        sub_bot = SubBotDTO(
             id=1,
             bot_id=12345,
             bot_username="test_bot",
@@ -253,7 +255,9 @@ class TestBroadcastDatetimeFix:
             user_count=10,
             message_count=100,
             created_at=datetime.utcnow(),
-        ))
+        )
+
+        bot = MagicMock(spec=Bot)
 
         # broadcast_svc.start() 抛出 TypeError（模拟 datetime bug）
         broadcast_svc = MagicMock()
@@ -264,13 +268,12 @@ class TestBroadcastDatetimeFix:
         )
 
         # 调用 handler —— 不应让 TypeError 逃逸
-        # 当前代码只捕获 BroadcastError，所以 TypeError 会逃逸
-        # 修复后应该不抛出异常
         try:
             await cb_broadcast_confirm(
                 callback=callback,
+                bot=bot,
+                sub_bot=sub_bot,
                 state=state,
-                bot_repo=bot_repo,
                 broadcast_svc=broadcast_svc,
             )
             # 如果没有抛异常，验证返回了错误消息

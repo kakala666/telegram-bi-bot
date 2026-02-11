@@ -47,6 +47,7 @@ class BroadcastService:
         content_text: str | None,
         content_file_id: str | None,
         content_caption: str | None,
+        bot: Bot | None = None,
     ) -> BroadcastTaskDTO:
         """发起广播任务
 
@@ -57,6 +58,7 @@ class BroadcastService:
             content_text: 文本内容
             content_file_id: 文件ID
             content_caption: 媒体说明
+            bot: 直接传入的Bot实例（子Bot场景），跳过registry查找
 
         Returns:
             BroadcastTaskDTO: 创建的广播任务
@@ -94,7 +96,7 @@ class BroadcastService:
 
         # 启动异步广播任务
         asyncio_task = asyncio.create_task(
-            self._execute_broadcast(task.id, sub_bot_id, users, content_type, content_text, content_file_id, content_caption),
+            self._execute_broadcast(task.id, sub_bot_id, users, content_type, content_text, content_file_id, content_caption, bot=bot),
             name=f"broadcast_{task.id}",
         )
         self._running_tasks[task.id] = asyncio_task
@@ -164,21 +166,23 @@ class BroadcastService:
         content_text: str | None,
         content_file_id: str | None,
         content_caption: str | None,
+        bot: Bot | None = None,
     ) -> None:
         """异步执行广播（内部方法）"""
-        # 通过 bot_repo 将 sub_bot_id（数据库主键）解析为 bot_id（Telegram ID）
-        bot = None
-        bot_repo = self._bot_repo
-        if bot_repo is not None:
-            try:
-                sub_bot_dto = await bot_repo.get_by_id(sub_bot_id)
-                if sub_bot_dto:
-                    bot = self._registry.get_bot(sub_bot_dto.bot_id)
-            except Exception:
-                logger.debug("通过 bot_repo 解析 bot_id 失败")
+        # 如果调用方直接传入了 bot 实例，跳过 registry 查找
         if bot is None:
-            # 兼容回退：直接用 sub_bot_id 查找（旧版本行为）
-            bot = self._registry.get_bot(sub_bot_id)
+            # 通过 bot_repo 将 sub_bot_id（数据库主键）解析为 bot_id（Telegram ID）
+            bot_repo = self._bot_repo
+            if bot_repo is not None:
+                try:
+                    sub_bot_dto = await bot_repo.get_by_id(sub_bot_id)
+                    if sub_bot_dto:
+                        bot = self._registry.get_bot(sub_bot_dto.bot_id)
+                except Exception:
+                    logger.debug("通过 bot_repo 解析 bot_id 失败")
+            if bot is None:
+                # 兼容回退：直接用 sub_bot_id 查找（旧版本行为）
+                bot = self._registry.get_bot(sub_bot_id)
         if not bot:
             logger.error("Bot不存在或未运行 sub_bot_id=%s", sub_bot_id)
             await self._broadcast_repo.update_status(task_id, "failed", completed_at=datetime.utcnow())

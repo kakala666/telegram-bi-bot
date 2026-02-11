@@ -104,6 +104,8 @@ async def main() -> None:
         "user_repo": user_repo,
         "bot_repo": bot_repo,
         "forwarder": forwarder,
+        "broadcast_svc": broadcast_svc,
+        "broadcast_repo": broadcast_repo,
     })
 
     # 10. 创建 Master Bot 实例

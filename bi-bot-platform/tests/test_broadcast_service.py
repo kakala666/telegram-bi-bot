@@ -52,7 +52,7 @@ def _make_broadcast_task_dto(
         sent_count=sent_count,
         failed_count=failed_count,
         status=status,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.utcnow(),
         completed_at=None,
     )
 
@@ -484,8 +484,8 @@ class TestBroadcastServiceValidation:
             sent_count=10,
             failed_count=0,
             status="completed",
-            created_at=datetime.now(timezone.utc) - timedelta(minutes=2),
-            completed_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+            created_at=datetime.utcnow() - timedelta(minutes=2),
+            completed_at=datetime.utcnow() - timedelta(minutes=1),
         )
         broadcast_repo.get_latest_by_bot = AsyncMock(return_value=recent_task)
 
