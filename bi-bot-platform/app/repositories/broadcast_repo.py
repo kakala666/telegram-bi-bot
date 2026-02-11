@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from sqlalchemy import and_, delete, func, select, update
 
@@ -125,7 +125,7 @@ class BroadcastRepo(BaseRepository):
     async def cleanup_expired(self, retention_days: int) -> int:
         """清理过期广播记录"""
         async with self._session_factory() as session:
-            cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+            cutoff = datetime.utcnow() - timedelta(days=retention_days)
             stmt = delete(BroadcastTask).where(
                 BroadcastTask.created_at < cutoff
             )

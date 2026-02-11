@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
@@ -72,7 +72,7 @@ class BroadcastService:
         # 检查最小间隔（5分钟）
         latest = await self._broadcast_repo.get_latest_by_bot(sub_bot_id)
         if latest:
-            now = datetime.now(timezone.utc)
+            now = datetime.utcnow()
             elapsed = (now - latest.created_at).total_seconds()
             if elapsed < 300:  # 5分钟 = 300秒
                 raise BroadcastError("两次广播之间请至少间隔5分钟")
@@ -181,7 +181,7 @@ class BroadcastService:
             bot = self._registry.get_bot(sub_bot_id)
         if not bot:
             logger.error("Bot不存在或未运行 sub_bot_id=%s", sub_bot_id)
-            await self._broadcast_repo.update_status(task_id, "failed", completed_at=datetime.now(timezone.utc))
+            await self._broadcast_repo.update_status(task_id, "failed", completed_at=datetime.utcnow())
             return
 
         rate_limit = 20  # 20条/秒
@@ -235,7 +235,7 @@ class BroadcastService:
 
         # 广播完成，更新最终状态
         await self._broadcast_repo.update_progress(task_id, sent_count, failed_count)
-        await self._broadcast_repo.update_status(task_id, "completed", completed_at=datetime.now(timezone.utc))
+        await self._broadcast_repo.update_status(task_id, "completed", completed_at=datetime.utcnow())
 
         # 从运行列表移除
         self._running_tasks.pop(task_id, None)

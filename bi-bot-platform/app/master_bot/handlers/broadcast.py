@@ -252,6 +252,13 @@ async def cb_broadcast_confirm(
             reply_markup=broadcast_cancel_keyboard(),
         )
         await callback.answer()
+    except Exception:
+        logger.exception("广播启动时发生未预期的错误")
+        await callback.message.edit_text(
+            "广播失败\n\n系统内部错误，请稍后重试",
+            reply_markup=broadcast_cancel_keyboard(),
+        )
+        await callback.answer()
 
 
 @router.callback_query(lambda c: c.data == "broadcast_cancel")
